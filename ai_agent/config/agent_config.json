@@ -1,0 +1,45 @@
+{
+  "database": {
+    "url": "${DATABASE_URL}",
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_timeout": 30
+  },
+  "llama": {
+    "endpoint": "${LLAMA_ENDPOINT}",
+    "model": "${LLAMA_MODEL}",
+    "max_tokens": 2048,
+    "temperature": 0.1,
+    "timeout": 30
+  },
+  "vector_db": {
+    "path": "${VECTOR_DB_PATH}",
+    "collection_name": "financial_policies",
+    "embedding_model": "text-embedding-ada-002",
+    "max_documents": 10000
+  },
+  "sap": {
+    "host": "${SAP_HOST}",
+    "client": "${SAP_CLIENT}",
+    "user": "${SAP_USER}",
+    "password": "${SAP_PASSWORD}",
+    "system_number": "${SAP_SYSTEM_NUMBER}",
+    "timeout": 30,
+    "pool_size": 5
+  },
+  "forecasting": {
+    "default_periods": 6,
+    "confidence_threshold": 0.7,
+    "anomaly_threshold": 0.15,
+    "methods": ["linear_trend", "seasonal_decomposition", "arima"]
+  },
+  "security": {
+    "jwt_secret": "${JWT_SECRET}",
+    "jwt_algorithm": "${JWT_ALGORITHM}",
+    "jwt_expiration_hours": 24,
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "burst_limit": 10
+    }
+  }
+}

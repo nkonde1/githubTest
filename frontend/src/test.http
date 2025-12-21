@@ -1,0 +1,3 @@
+POST http://localhost:8000/api/v1/payments/sync?provider=shopify
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0MDM0ODE4NS1kYWM4LTRkY2EtYmUwYy01NzQ4ZTI3ZmQ2YTMiLCJleHAiOjE3NTY0MDcxMjgsInR5cGUiOiJyZWZyZXNoIn0.-vJJZoo_f2ZpLK1mGSYhNlyt4iqCepIw3qOS5cBGyag
+Content-Type: application/json

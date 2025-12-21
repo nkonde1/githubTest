@@ -1,0 +1,152 @@
+version: '3.8'
+
+# This Docker Compose file defines and runs the multi-container
+# embedded finance and analytics platform.
+
+services:
+  # --- PostgreSQL Database Service ---
+  db:
+    image: postgres:15-alpine # Using a lightweight PostgreSQL image
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finance_db} # Database name
+      POSTGRES_USER: ${POSTGRES_USER:-user}   # Database user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # Database password
+    volumes:
+      - pg_data:/var/lib/postgresql/data # Persistent data volume
+    ports:
+      - "5432:5432" # Expose PostgreSQL port to host for direct access (optional)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finance_network
+
+  # --- Redis Service ---
+  redis:
+    image: redis:7-alpine # Lightweight Redis image
+    restart: always
+    ports:
+      - "6377:6379" # Map Redis default port 6379 to 6377 on host to avoid common conflicts
+    command: redis-server --appendonly yes --port 6379 # Enable AOF for data persistence
+    volumes:
+      - redis_data:/data # Persistent data volume
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - finance_network
+
+  # --- Ollama AI Service ---
+  # Hosts the LLaMA 3.2 model for AI interactions
+  ollama:
+    image: ollama/ollama:latest # Use the latest Ollama image
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama # Persistent data volume for models
+    ports:
+      - "11434:11434" # Default Ollama API port
+    # Command to pull the LLaMA 3.2 model on startup.
+    # This ensures the model is available when the container starts.
+    command: >
+      bash -c "
+        ollama pull llama3.2 || true # Pull llama3.2, ignore if it already exists or fails
+        && ollama serve # Start the Ollama server
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s # Give Ollama some time to start and pull models
+    networks:
+      - finance_network
+
+  # --- Backend FastAPI Service ---
+  backend:
+    build:
+      context: ./backend # Build from the backend directory
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000:8000" # Map backend port to host
+    env_file:
+      - ./backend/.env # Load environment variables for backend
+    depends_on:
+      db:
+        condition: service_healthy # Ensure DB is healthy before starting backend
+      redis:
+        condition: service_healthy # Ensure Redis is healthy
+      ollama:
+        condition: service_healthy # Ensure Ollama is healthy
+    volumes:
+      - ./backend:/app/backend # Mount backend code for hot reloading in development
+    networks:
+      - finance_network
+    # Development command with hot reload (default in backend/Dockerfile)
+    # command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Production command (uncomment in backend/Dockerfile and rebuild for production)
+    # command: gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+
+
+  # --- Celery Worker Service ---
+  # For processing background tasks (e.g., payment sync, complex analytics)
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - ./backend/.env
+    command: celery -A app.celery_worker worker --loglevel=info # Command to run Celery worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started # Depends on backend to have `celery_app` defined
+    networks:
+      - finance_network
+    volumes:
+      - ./backend:/app/backend # Mount backend code to allow worker to see changes
+
+
+  # --- Frontend React.js Service ---
+  frontend:
+    build:
+      context: ./frontend # Build from the frontend directory
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000" # Map frontend port to host
+    volumes:
+      - ./frontend:/app/frontend # Mount frontend code for hot reloading in development
+      - /app/frontend/node_modules # Exclude node_modules from host mount
+    env_file:
+      - ./frontend/.env # Load environment variables for frontend
+    depends_on:
+      backend:
+        condition: service_started # Frontend depends on backend to serve API
+    networks:
+      - finance_network
+    # Development command: Vite's dev server with hot reload
+    command: npm run dev
+
+# --- Docker Volumes ---
+# Used for persistent storage of database, Redis, and Ollama data.
+# This prevents data loss when containers are stopped or removed.
+volumes:
+  pg_data: {}
+  redis_data: {}
+  ollama_data: {}
+
+# --- Docker Networks ---
+# Custom network to allow services to communicate with each other using service names.
+networks:
+  finance_network:
+    driver: bridge # Default bridge network
