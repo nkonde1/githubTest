@@ -1,126 +1,94 @@
 # backend/app/core/config.py
-"""
-Application configuration settings.
-"""
-
 import os
-import json
-from typing import Optional, List
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
+from typing import List, Optional, Any
+
+from pydantic import AnyHttpUrl, validator
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
-    """Application settings"""
+    """
+    Application-wide settings.
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-        extra="ignore"
-    )
+    Uses pydantic-settings to load configuration from environment variables
+    and/or a .env file.
+    """
 
-    # Project metadata
-    PROJECT_NAME: str = "Finance AI Platform"
-    VERSION: str = "1.0.0"
+    # --- Core Application Settings ---
+    PROJECT_NAME: str = "EasyFlow Finance API"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
     API_V1_STR: str = "/api/v1"
+    SECRET_KEY: str
 
-    # Security
-    ALLOWED_HOSTS: str = "*"  # Will be parsed as list in __init__
-    BACKEND_CORS_ORIGINS: str = os.getenv(
-        "BACKEND_CORS_ORIGINS", 
-        "http://localhost:3000,http://localhost:5173"
-    )
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "generate-a-secure-key-for-production")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "10080")) # 7 days
-    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    # --- CORS Settings ---
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = [
+        "http://localhost",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://easyflow-ai-agent-844280192170.us-central1.run.app",
+    ]
 
-    # Mobile Money (Zambia)
-    MOMO_SUBSCRIPTION_KEY: str = os.getenv("MOMO_SUBSCRIPTION_KEY", "")
-    AIRTEL_CLIENT_ID: str = os.getenv("AIRTEL_CLIENT_ID", "")
-    AIRTEL_CLIENT_SECRET: str = os.getenv("AIRTEL_CLIENT_SECRET", "")
+    # --- Database Settings (PostgreSQL) ---
+    SQLALCHEMY_DATABASE_URI: Optional[str] = None  # Changed from PostgresDsn to str
 
-    # Environment
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
-
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "%(levelprefix)s | %(asctime)s | %(message)s")
-    LOG_FILE: Optional[str] = os.getenv("LOG_FILE")
-    JSON_LOGS: bool = os.getenv("JSON_LOGS", "False").lower() == "true"
-
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
-    # Redis settings
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
-    REDIS_MAX_RETRIES: int = int(os.getenv("REDIS_MAX_RETRIES", "3"))
-    REDIS_RETRY_INTERVAL: int = int(os.getenv("REDIS_RETRY_INTERVAL", "5"))
-
-    # Shopify
-    SHOPIFY_ACCESS_TOKEN: str = os.getenv("SHOPIFY_ACCESS_TOKEN", "")
-    SHOPIFY_SHOP_DOMAIN: str = os.getenv("SHOPIFY_SHOP_DOMAIN", "")
-    SHOPIFY_API_VERSION: str = "2023-10"
-
-    # Stripe
-    STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
-
-    # QuickBooks
-    QUICKBOOKS_BASE_URL: str = os.getenv("QUICKBOOKS_BASE_URL", "https://quickbooks.api.intuit.com")
-    QUICKBOOKS_ACCESS_TOKEN: str = os.getenv("QUICKBOOKS_ACCESS_TOKEN", "")
-
-    # Sync controls
-    MIN_SYNC_INTERVAL: int = int(os.getenv("MIN_SYNC_INTERVAL", "300"))  # seconds between full syncs
-
-    # Celery Configuration
-    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
-    CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-    CELERY_TASK_ALWAYS_EAGER: bool = os.getenv("CELERY_TASK_ALWAYS_EAGER", "False").lower() == "true"
-
-    # LLAMA Settings
-    LLAMA_ENDPOINT: str = os.getenv("LLAMA_ENDPOINT", "http://localhost:11434")
-    LLAMA_MODEL: str = os.getenv("LLAMA_MODEL", "llama3.2")
-    LLAMA_MAX_TOKENS: int = int(os.getenv("LLAMA_MAX_TOKENS", "2048"))
-    LLAMA_TEMPERATURE: float = float(os.getenv("LLAMA_TEMPERATURE", "0.7"))
-    LLAMA_TOP_P: float = float(os.getenv("LLAMA_TOP_P", "0.9"))
-
-    # Session settings
-    SESSION_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Parse ALLOWED_HOSTS from string to list
-        if self.ALLOWED_HOSTS == "*":
-            self._allowed_hosts_list = ["*"]
+    @validator("SQLALCHEMY_DATABASE_URI", pre=True)
+    def assemble_db_connection(cls, v: Optional[str], values: dict) -> Any:
+        if isinstance(v, str) and v:
+            return v
+        # Build from individual components
+        user = os.getenv("POSTGRES_USER", "user")
+        password = os.getenv("POSTGRES_PASSWORD", "password")
+        host = os.getenv("POSTGRES_HOST", "db")
+        db = os.getenv("POSTGRES_DB", "finance_db")
+        
+        # Handle Cloud SQL Unix socket connections
+        if host.startswith("/cloudsql/"):
+            return f"postgresql+asyncpg://{user}:{password}@/{db}?host={host}"
         else:
-            try:
-                # Try to parse as JSON first
-                self._allowed_hosts_list = json.loads(self.ALLOWED_HOSTS)
-            except json.JSONDecodeError:
-                # Fall back to comma-separated string
-                self._allowed_hosts_list = [host.strip() for host in self.ALLOWED_HOSTS.split(",") if host.strip()]
+            return f"postgresql+asyncpg://{user}:{password}@{host}/{db}"
+
+    # --- Redis Settings ---
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_DB: int
 
     @property
-    def allowed_hosts_list(self) -> List[str]:
-        """Get ALLOWED_HOSTS as a list"""
-        return self._allowed_hosts_list
+    def REDIS_URL(self) -> str:  # Changed from RedisDsn to str
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    # --- Celery (Background Task Queue) Settings ---
+    @property
+    def CELERY_BROKER_URL(self) -> str:
+        return self.REDIS_URL
 
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> str:
-        """Get async database URI"""
-        if not self.DATABASE_URL:
-            raise ValueError("DATABASE_URL environment variable is not set")
-            
-        if self.DATABASE_URL.startswith("postgresql://"):
-            return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return self.DATABASE_URL
+    def CELERY_RESULT_BACKEND(self) -> str:
+        return self.REDIS_URL
 
-    @property
-    def has_shopify_config(self) -> bool:
-        """Check if Shopify is properly configured"""
-        return bool(self.SHOPIFY_ACCESS_TOKEN and self.SHOPIFY_SHOP_DOMAIN)
+    # --- AI Agent & Other Microservices ---
+    AI_AGENT_URL: Optional[AnyHttpUrl] = None
 
-# Initialize settings
-settings = Settings()
+    # --- Third-Party API Keys ---
+    SHOPIFY_API_KEY: Optional[str] = None
+    SHOPIFY_API_SECRET: Optional[str] = None
+    SHOPIFY_API_VERSION: str = "2023-10"
+    STRIPE_API_KEY: Optional[str] = None
+
+    # --- Access Token Settings ---
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7 # 7 days
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
+
+
+    class Config:
+        case_sensitive = True
+        env_file = ".env"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
