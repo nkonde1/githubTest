@@ -74,21 +74,27 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    """Run migrations in 'online' mode."""
+    
+    # Get the configuration section from alembic.ini
+    section = config.get_section(config.config_ini_section, {})
+    
+    # OVERRIDE: If DATABASE_URL is in the environment, use it!
+    # This allows you to set the IP/Password via shell or secret manager
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        section["sqlalchemy.url"] = db_url
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata
         )
 
         with context.begin_transaction():

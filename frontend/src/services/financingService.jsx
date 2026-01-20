@@ -1,5 +1,5 @@
 // financingService.js
-import { api } from './api';
+import api from './api';
 
 export const financingService = {
   async getFinancingOffers(creditScore) {

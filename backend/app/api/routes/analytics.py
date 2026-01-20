@@ -44,7 +44,7 @@ def get_analytics_data(
                 Transaction.user_id == current_user.id,
                 Transaction.created_at >= day_start,
                 Transaction.created_at < day_end,
-                Transaction.status == "completed",
+                or_(Transaction.status.ilike("completed"), Transaction.status.ilike("ts")),
             )
             day_revenue = float(q.scalar() or 0)
             q_tx = db.query(func.count(Transaction.id)).filter(
@@ -106,7 +106,7 @@ def get_dashboard(
 
         total_revenue = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
             Transaction.user_id == current_user.id,
-            Transaction.status == "completed",
+            or_(Transaction.status.ilike("completed"), Transaction.status.ilike("ts")),
             Transaction.created_at >= start_date,
         ).scalar() or 0
 
@@ -140,7 +140,7 @@ def get_dashboard(
 
         completed_count = db.query(func.count(Transaction.id)).filter(
             Transaction.user_id == current_user.id,
-            Transaction.status == "completed",
+            or_(Transaction.status.ilike("completed"), Transaction.status.ilike("ts")),
             Transaction.created_at >= start_date,
         ).scalar() or 0
         conversion_rate = (completed_count / total_transactions) if total_transactions > 0 else 0.0

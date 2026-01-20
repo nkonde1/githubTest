@@ -1,9 +1,10 @@
-# backend/app/api/v1/metrics.py
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func, String, cast
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
+from uuid import UUID
+
 from app.database import get_db
 from app.models.financing import BusinessMetrics
 from app.services.analytics_engine import AnalyticsEngine
@@ -11,7 +12,7 @@ from app.services.ai_agent import AIAgentService
 from app.api.deps import get_current_user
 from app.models.user import User
 
-router = APIRouter()  # removed tags here to keep simple
+router = APIRouter()
 
 def _row_to_dict(r: BusinessMetrics):
     return {
@@ -33,18 +34,29 @@ def _row_to_dict(r: BusinessMetrics):
         "calculated_at": r.calculated_at.isoformat() if getattr(r, "calculated_at", None) else None,
     }
 
-# use relative paths — router will be mounted under /api/v1/metrics
 @router.get("/business_metrics", response_model=List[dict])
-@router.get("/business-metrics", response_model=List[dict])
 async def get_business_metrics(
+    user_id: Optional[str] = Query(None, description="User ID to fetch metrics for. Bypasses token authentication."),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user),
     limit: int = 10
 ):
     try:
+        target_user_id_str = None
+        if user_id:
+            target_user_id_str = user_id
+        elif current_user:
+            target_user_id_str = str(current_user.id)
+        else:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        if not target_user_id_str:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # This query targets BusinessMetrics, which correctly uses a string user_id.
         q = await db.execute(
             select(BusinessMetrics)
-            .where(BusinessMetrics.user_id == current_user.id)
+            .where(BusinessMetrics.user_id == target_user_id_str)
             .order_by(BusinessMetrics.calculated_at.desc())
             .limit(limit)
         )
@@ -53,9 +65,7 @@ async def get_business_metrics(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.post("/business_metrics/update")
-@router.post("/business-metrics/update")
+@router.post("/update")
 async def update_business_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -65,11 +75,10 @@ async def update_business_metrics(
     This recalculates all metrics based on the latest transaction data.
     """
     try:
-        # Initialize services
         ai_service = AIAgentService()
         analytics = AnalyticsEngine(db, ai_service)
         
-        # Update metrics for current user
+        # DEFINITIVE FIX: Pass the user ID as a string, which is what the analytics engine now expects.
         metrics = await analytics.update_business_metrics(str(current_user.id))
         
         return {

@@ -135,7 +135,7 @@ async def get_transaction_summary(
     by_status = {}
     successful_count = 0
     
-    successful_statuses = ['completed', 'successful', 'succeeded']
+    successful_statuses = ['completed', 'successful', 'succeeded', 'ts', 'success']
     
     for transaction in transactions:
         # Currency totals (only for successful payment transactions)

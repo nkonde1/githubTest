@@ -1,6 +1,6 @@
 // frontend/src/redux/slices/aiChatSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { api as http } from '../../services/api';
+import http from '../../services/api';
 import { logoutUser } from './user_slice';
 
 /**
@@ -23,10 +23,16 @@ export const fetchConversationHistory = createAsyncThunk(
  */
 export const sendChatMessage = createAsyncThunk(
   'aiChat/sendMessage',
-  async ({ conversationId, message }, { rejectWithValue }) => {
+  async ({ conversationId, message }, { getState, rejectWithValue }) => {
     try {
+      const { user } = getState().user;
+      if (!user || !user.id) {
+        return rejectWithValue('User not authenticated. Please log in again.');
+      }
+      
       const response = await http.post('/api/v1/insights/chat', {
         conversation_id: conversationId,
+        user_id: user.id, // FIXED: Pass the user_id to the backend
         content: message,
       });
       return response.data;
@@ -85,7 +91,7 @@ const aiChatSlice = createSlice({
     },
 
     // Initialize conversation ID from localStorage
-    initializeConversationId: (state) => {
+    initializeConversationId: (state) => {.
       if (typeof window !== 'undefined') {
         const storedId = localStorage.getItem('ai_chat_conversation_id');
         if (storedId) {
@@ -178,4 +184,3 @@ export const {
 } = aiChatSlice.actions;
 
 export default aiChatSlice.reducer;
-

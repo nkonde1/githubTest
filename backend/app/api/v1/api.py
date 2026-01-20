@@ -1,17 +1,15 @@
-# backend/app/api/v1/api.py
-
 from fastapi import APIRouter
-from . import auth
-from . import metrics
-from . import financing
+from . import auth, metrics, financing, payments, analytics, insights, telco, billing
 
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter()
 
-# include existing v1 routers
+# Register all routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-# mount metrics so final endpoint will be: /api/v1/metrics/business_metrics
+# Corrected the prefix to "/metrics"
 api_router.include_router(metrics.router, prefix="/metrics", tags=["metrics"])
-# ALSO mount metrics at the v1 root to support legacy frontend path /api/v1/business-metrics
-api_router.include_router(metrics.router, prefix="", tags=["metrics-legacy"])
-
 api_router.include_router(financing.router, prefix="/financing", tags=["financing"])
+api_router.include_router(payments.router, prefix="/payments", tags=["payments"])
+api_router.include_router(telco.router, prefix="/telco", tags=["telco"])
+api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(insights.router, prefix="/insights", tags=["insights"])
+api_router.include_router(billing.router, prefix="/billing", tags=["billing"])

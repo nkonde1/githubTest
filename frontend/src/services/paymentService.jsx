@@ -1,6 +1,6 @@
 // /frontend/src/services/paymentService.jsx
 
-import { api } from './api'; // Assuming you have an 'api.js' or 'api.jsx' for Axios or fetch setup
+import api from './api'; // Assuming you have an 'api.js' or 'api.jsx' for Axios or fetch setup
 
 const paymentService = {
   /**

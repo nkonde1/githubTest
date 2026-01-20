@@ -14,19 +14,24 @@ class Settings(BaseSettings):
     Uses pydantic-settings to load configuration from environment variables
     and/or a .env file.
     """
-
+    API_V1_STR: str = "/api/v1"
+    
+    # --- JWT / Auth Settings ---
+    # This must be defined here for the app to recognize it!
+    SECRET_KEY: str 
+    ALGORITHM: str = "HS256"  # Add this default value
     # --- Core Application Settings ---
     PROJECT_NAME: str = "EasyFlow Finance API"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str
 
     # --- CORS Settings ---
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = [
         "http://localhost",
         "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://easyflow-ai-agent-844280192170.us-central1.run.app",
+        "http://localhost:5173", # Add Vite's default port too
+        "https://easyflow-58299932-e99e8.web.app", # Your current production
+        "https://easyflowfinance.com", # Your future domain
     ]
 
     # --- Database Settings (PostgreSQL) ---
@@ -74,6 +79,10 @@ class Settings(BaseSettings):
     SHOPIFY_API_SECRET: Optional[str] = None
     SHOPIFY_API_VERSION: str = "2023-10"
     STRIPE_API_KEY: Optional[str] = None
+    MOMO_SUBSCRIPTION_KEY: str = "placeholder_key"
+    AIRTEL_CLIENT_ID: str = "placeholder_key"
+    AIRTEL_CLIENT_SECRET: str = "placeholder_key"
+    MTN_API_KEY: str = "placeholder_key"
 
     # --- Access Token Settings ---
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days

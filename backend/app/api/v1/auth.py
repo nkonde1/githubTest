@@ -1,4 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+def get_utc_now():
+    return datetime.now(timezone.utc)
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -59,8 +61,8 @@ async def register_user(
         business_type=user_data.business_type,
         phone_number=user_data.phone_number,
         gdpr_consent=user_data.gdpr_consent,
-        terms_accepted_at=datetime.utcnow() if user_data.terms_accepted else None,
-        privacy_policy_accepted_at=datetime.utcnow() if user_data.privacy_accepted else None,
+        terms_accepted_at=get_utc_now() if user_data.terms_accepted else None,
+        privacy_policy_accepted_at=get_utc_now() if user_data.privacy_accepted else None,
         is_active=True,
     )
 
@@ -129,13 +131,20 @@ async def login_user(
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
+    # --- FIXED SECTION START ---
+    # We explicitly define the datetime objects here to resolve the 500 error 
+    # caused by serialization issues in the production environment.
+    now = get_utc_now()
+    session_expiry = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
     session = UserSession(
         user_id=user.id,
         session_token=refresh_token,
         ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", ""),
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=session_expiry
     )
+    # --- FIXED SECTION END ---
 
     await update_last_login(db, user)
 
@@ -190,7 +199,7 @@ async def login_json(
     user = await db.execute(select(User).filter(User.email == login_data.email))
     user = user.scalars().first()
 
-    if not user:
+    if not user or not verify_password(login_data.password, user.hashed_password):
         logger.warning("Failed JSON login attempt: Incorrect credentials", extra={"email": login_data.email})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -207,13 +216,20 @@ async def login_json(
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
+    # --- FIXED SECTION START ---
+    # We calculate the clean datetime object here to ensure the SQLAlchemy driver 
+    # receives a valid object rather than an improperly serialized string.
+    now = get_utc_now()
+    session_expiry = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
     session = UserSession(
         user_id=user.id,
         session_token=refresh_token,
         ip_address=request.client.host if request.client else "unknown",
         user_agent=request.headers.get("user-agent", ""),
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=session_expiry  # Using the pre-calculated object
     )
+    # --- FIXED SECTION END ---
 
     await update_last_login(db, user)
 
@@ -239,7 +255,7 @@ async def login_json(
             token_type="bearer",
             refresh_token=refresh_token,
         )
-        # Use FastAPI's Response object for headers/cookies and return the Pydantic model
+        
         if response is not None:
             response.headers["Authorization"] = f"Bearer {access_token}"
             response.set_cookie(
@@ -251,7 +267,6 @@ async def login_json(
                 max_age=7 * 24 * 60 * 60,  # 7 days
             )
 
-        # Returning the Pydantic model lets FastAPI handle JSON serialization
         return response_data
 
     except Exception as e:
@@ -413,11 +428,15 @@ async def create_demo_user_endpoint(
         )
 
 @router.options("/login-json")
-async def auth_options():
+async def auth_options(request: Request):
+    origin = request.headers.get("Origin")
+    # Check if the incoming origin is in our allowed list
+    allow_origin = origin if origin in [str(o).rstrip('/') for o in settings.BACKEND_CORS_ORIGINS] else str(settings.BACKEND_CORS_ORIGINS[0])
+    
     return Response(
         status_code=200,
         headers={
-            "Access-Control-Allow-Origin": "http://localhost:5173",
+            "Access-Control-Allow-Origin": allow_origin,
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
             "Access-Control-Allow-Credentials": "true",

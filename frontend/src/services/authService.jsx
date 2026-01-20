@@ -1,4 +1,4 @@
-import api, { setAuthToken } from './api'; // top-level import of configured Axios instance
+import api, { attachAuthToken, detachAuthToken } from './api'; // top-level import of configured Axios instance
 import axios from 'axios';
 const API_URL = import.meta.env.VITE_APP_API_URL || 'http://localhost:8000';
 
@@ -83,8 +83,8 @@ class AuthService {
     }
 
     // Keep central API helper in sync if provided
-    if (typeof setAuthToken === 'function') {
-      try { setAuthToken(accessToken); } catch (_) { /* no-op */ }
+    if (typeof attachAuthToken === 'function') {
+      try { attachAuthToken(accessToken); } catch (_) { /* no-op */ }
     }
 
     // FIXED: Setup new refresh timer when tokens are set
@@ -105,8 +105,8 @@ class AuthService {
     if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
       delete api.defaults.headers.common['Authorization'];
     }
-    if (typeof setAuthToken === 'function') {
-      try { setAuthToken(null); } catch (_) { /* no-op */ }
+    if (typeof detachAuthToken === 'function') {
+      try { detachAuthToken(); } catch (_) { /* no-op */ }
     }
 
     // FIXED: Clear refresh timer to prevent memory leaks
@@ -511,8 +511,8 @@ if (currentAccessToken) {
   if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
     api.defaults.headers.common['Authorization'] = `Bearer ${currentAccessToken}`;
   }
-  if (typeof setAuthToken === 'function') {
-    try { setAuthToken(currentAccessToken); } catch (_) { /* no-op */ }
+  if (typeof attachAuthToken === 'function') {
+    try { attachAuthToken(currentAccessToken); } catch (_) { /* no-op */ }
   }
   if (process.env.NODE_ENV === 'development') {
     console.log('AuthService: Initial Axios header set from localStorage.');

@@ -1,15 +1,15 @@
-#!/usr/bin/env python3
-"""
-Simple script to run the FastAPI server with correct host settings
-"""
-
+import os
 import uvicorn
 
 if __name__ == "__main__":
+    # Use the PORT environment variable provided by Cloud Run, default to 8080
+    port = int(os.environ.get("PORT", 8080))
+    host = os.environ.get("UVICORN_HOST", "0.0.0.0")
+
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",  # Allow all hosts
-        port=8000,
-        reload=True,
+        host=host,
+        port=port,
+        reload=False,  # Always False in production
         log_level="info"
     )

@@ -1,6 +1,6 @@
 # backend/app/database.py
 """
-Database connection and session management.
+Database connection and session management using lazy initialization.
 """
 
 from typing import AsyncGenerator
@@ -15,49 +15,62 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy models"""
     pass
 
-# Create async engine
-engine = create_async_engine(
-    settings.SQLALCHEMY_DATABASE_URI,
-    echo=settings.DEBUG,
-    future=True
-)
+_engine = None
+_async_session_maker = None
 
-# Create async session maker
-async_session_maker = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+def get_engine():
+    """Lazily initialize and return the SQLAlchemy engine."""
+    global _engine
+    if _engine is None:
+        logger.info("Initializing database engine.")
+        # Changed from DATABASE_URL to SQLALCHEMY_DATABASE_URI
+        _engine = create_async_engine(
+            settings.SQLALCHEMY_DATABASE_URI,
+            echo=(settings.ENVIRONMENT == "development"),  # Changed from settings.DEBUG
+            future=True,
+            pool_pre_ping=True
+        )
+    return _engine
 
-# Alias for backward compatibility
-SessionLocal = async_session_maker
+def get_session_maker():
+    """Lazily initialize and return the session maker."""
+    global _async_session_maker
+    if _async_session_maker is None:
+        logger.info("Initializing session maker.")
+        engine = get_engine()
+        _async_session_maker = async_sessionmaker(
+            engine,
+            class_=AsyncSession,
+            expire_on_commit=False
+        )
+    return _async_session_maker
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get async database session"""
-    async with async_session_maker() as session:
+    """Dependency that provides a database session and handles cleanup."""
+    session_maker = get_session_maker()
+    async with session_maker() as session:
         try:
             yield session
-            await session.commit()
-        except Exception as e:
-            logger.error(f"Database session error: {str(e)}")
+        except Exception:
             await session.rollback()
             raise
         finally:
             await session.close()
 
-# Aliases for compatibility with different naming conventions
+# Aliases for backward compatibility and common conventions
+SessionLocal = get_session_maker
 get_db = get_async_session
 get_session = get_async_session
 
 async def create_tables() -> None:
-    """Create all database tables"""
+    """Create all database tables."""
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# Export all needed symbols
 __all__ = [
     'Base',
-    'engine',
+    'get_engine',
     'SessionLocal',
     'get_async_session',
     'get_db',
